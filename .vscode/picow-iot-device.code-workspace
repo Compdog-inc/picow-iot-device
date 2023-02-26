@@ -1,0 +1,75 @@
+{
+	"folders": [
+		{
+			"path": ".."
+		}
+	],
+	"settings": {
+		"files.associations": {
+			"*.ejs": "html",
+			"lwipopts_examples_common.h": "c",
+			"cyw43_arch.h": "c",
+			"cyw43.h": "c",
+			"netif.h": "c",
+			"vreg.h": "c",
+			"clocks.h": "c",
+			"flash.h": "c",
+			"typeinfo": "c",
+			"stdio.h": "c",
+			"non_volatile_mem.h": "c",
+			"ssd1306.h": "c",
+			"i2c.h": "c",
+			"stdlib.h": "c",
+			"acme_5_outlines_font.h": "c",
+			"wifi_up.h": "c",
+			"wifi_fail.h": "c",
+			"random": "c",
+			"con_up.h": "c",
+			"numbers": "c",
+			"connection.h": "c",
+			"debug.h": "c",
+			"array": "c",
+			"bitset": "c",
+			"string_view": "c",
+			"initializer_list": "c",
+			"regex": "c",
+			"algorithm": "c",
+			"sync.h": "c",
+			"watchdog.h": "c",
+			"sockets.h": "c",
+			"freertos.h": "c",
+			"semphr.h": "c",
+			"exception.h": "c",
+			"config.h": "c",
+			"framework.h": "c",
+			"*.tcc": "c",
+			"cstdarg": "c",
+			"stdarg.h": "c",
+			"ip_addr.h": "c",
+			"ip6_addr.h": "c",
+			"string": "c",
+			"ip4_addr.h": "c",
+			"map": "c",
+			"limits.h": "c",
+			"jdecoder.h": "c",
+			"jencoder.h": "c",
+			"functional": "c"
+		},
+		"cmake.statusbar.advanced": {
+			"debug": {
+				"visibility": "hidden"
+			},
+			"launch": {
+				"visibility": "hidden"
+			},
+			"build": {
+				"visibility": "hidden"
+			},
+			"buildTarget": {
+				"visibility": "hidden"
+			}
+		},
+		"git.ignoreLimitWarning": true,
+		"cortex-debug.variableUseNaturalFormat": true
+	}
+}
