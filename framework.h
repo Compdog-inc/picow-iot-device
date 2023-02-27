@@ -9,16 +9,19 @@
 #include <math.h>
 
 #include <pico/stdlib.h>
+#include <pico/util/datetime.h>
 #include <pico/cyw43_arch.h>
 
 #include <hardware/vreg.h>
 #include <hardware/clocks.h>
 #include <hardware/watchdog.h>
+#include <hardware/rtc.h>
 
 #include <lwip/netif.h>
 #include <lwip/ip4_addr.h>
 #include <lwip/apps/lwiperf.h>
 #include <lwip/sockets.h>
+#include <lwip/apps/sntp.h>
 
 #include <FreeRTOS.h>
 #include <semphr.h>

@@ -53,7 +53,20 @@
 			"limits.h": "c",
 			"jdecoder.h": "c",
 			"jencoder.h": "c",
-			"functional": "c"
+			"functional": "c",
+			"getline.h": "c",
+			"compare": "c",
+			"udp.h": "c",
+			"dns.h": "c",
+			"pbuf.h": "c",
+			"def.h": "c",
+			"condition_variable": "c",
+			"ratio": "c",
+			"tuple": "c",
+			"type_traits": "c",
+			"utility": "c",
+			"bmspa_font.h": "c",
+			"chrono": "c"
 		},
 		"cmake.statusbar.advanced": {
 			"debug": {

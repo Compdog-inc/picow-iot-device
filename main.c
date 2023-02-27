@@ -71,6 +71,8 @@ const char *logLines[LOG_LINE_COUNT];
 iot_tcp_client_t client;
 bool clientInitialized = false;
 
+bool rtcClockSet = false;
+
 // screen pages
 #define SCREEN_PAGE_TIME 0
 #define SCREEN_PAGE_TEMP 1
@@ -117,6 +119,22 @@ void debugLog(const char *frm, const char *shortFrm, ...)
     }
     va_end(args);
     F_END("debugLog");
+}
+
+void setRTCTime(uint32_t sec)
+{
+    const time_t t = (const time_t)sec;
+    struct tm *ptm = gmtime(&t);
+    datetime_t time = {
+        .year = 1900 + ptm->tm_year,
+        .month = ptm->tm_mon + 1,
+        .day = ptm->tm_mday,
+        .dotw = ptm->tm_wday,
+        .hour = ptm->tm_hour,
+        .min = ptm->tm_min,
+        .sec = ptm->tm_sec};
+    rtc_set_datetime(&time);
+    rtcClockSet = true;
 }
 
 void rtos_panic_oled(const char *fmt, ...)
@@ -452,6 +470,9 @@ static void ui_task(__unused void *params)
 
     int page = -1;
     bool prevDown = false;
+    datetime_t timeS;
+    char timeBuf[3];
+    absolute_time_t screenUpdateTime = make_timeout_time_ms(200);
 
     while (client.running)
     {
@@ -462,36 +483,81 @@ static void ui_task(__unused void *params)
                 page = SCREEN_PAGE_TIME;
 
             printf("[UI] Switching to page: %s\n", SCREEN_PAGE_STR(page));
-
-            if (dispMut != NULL)
-            {
-                if (!xSemaphoreTake(dispMut, 100))
-                    printf("[UI] WARNING! Unsafe display access\n");
-                else
-                {
-                    ssd1306_draw_square(&disp, 0, 10, disp.width, disp.height - 10, false); // clear client area
-
-                    switch (page)
-                    {
-                    case SCREEN_PAGE_TIME:
-                    {
-                        // total width: 24+3+51+3+3 = 84
-                        // total height: 24
-                        // center X: 22
-                        // center Y: 20
-                        ssd1306_draw_string_with_font(&disp, 22, 20, 3, BMSPA_font, "2", true);
-                        ssd1306_draw_string_with_font(&disp, 49, 20, 3, BMSPA_font, ":", true);
-                        ssd1306_draw_string_with_font(&disp, 55, 20, 3, BMSPA_font, "09", true);
-                        break;
-                    }
-                    }
-
-                    ssd1306_show(&disp);
-                    xSemaphoreGive(dispMut);
-                }
-            }
+            screenUpdateTime = get_absolute_time();
         }
         prevDown = down;
+        if (time_reached(screenUpdateTime) && dispMut != NULL)
+        {
+            screenUpdateTime = make_timeout_time_ms(200);
+            if (!xSemaphoreTake(dispMut, 100))
+                printf("[UI] WARNING! Unsafe display access\n");
+            else
+            {
+                ssd1306_draw_square(&disp, 0, 10, disp.width, disp.height - 10, false); // clear client area
+
+                switch (page)
+                {
+                case SCREEN_PAGE_TIME:
+                {
+                    if (!rtc_get_datetime(&timeS))
+                    {
+                        ssd1306_draw_string(&disp, 10, 10, 1, "RTC Error", true);
+                        break;
+                    }
+
+                    struct tm timeT;
+                    timeT.tm_isdst = 0;
+                    timeT.tm_year = timeS.year - 1900;
+                    timeT.tm_mon = timeS.month - 1;
+                    timeT.tm_wday = timeS.dotw;
+                    timeT.tm_hour = timeS.hour;
+                    timeT.tm_min = timeS.min;
+                    timeT.tm_sec = timeS.sec;
+                    time_t utc = mktime(&timeT);
+                    time_t local = utc + (CLOCK_TIMEZONE) + (CLOCK_DAYLIGHT_SAVINGS ? 3600 : 0);
+                    struct tm *localT = localtime(&local);
+
+                    datetime_t timeL = {
+                        .year = 1900 + localT->tm_year,
+                        .month = localT->tm_mon + 1,
+                        .day = localT->tm_mday,
+                        .dotw = localT->tm_wday,
+                        .hour = localT->tm_hour,
+                        .min = localT->tm_min,
+                        .sec = localT->tm_sec};
+
+                    timeL.hour %= 12;
+                    if (timeL.hour == 0)
+                        timeL.hour = 12;
+
+                    // total width: 24+3+51+3+3 = 84 / 51+3+51+3+3 = 111
+                    // total height: 24
+                    // center X: 22 / 9
+                    // center Y: 20
+                    if (timeL.hour > 9)
+                    {
+                        sprintf(timeBuf, "%d", timeL.hour);
+                        ssd1306_draw_string_with_font(&disp, 9, 20, 3, BMSPA_font, timeBuf, true);
+                        ssd1306_draw_string_with_font(&disp, 63, 20, 3, BMSPA_font, ":", true);
+                        sprintf(timeBuf, "%02d", timeL.min);
+                        ssd1306_draw_string_with_font(&disp, 69, 20, 3, BMSPA_font, timeBuf, true);
+                    }
+                    else
+                    {
+                        sprintf(timeBuf, "%d", timeL.hour);
+                        ssd1306_draw_string_with_font(&disp, 22, 20, 3, BMSPA_font, timeBuf, true);
+                        ssd1306_draw_string_with_font(&disp, 49, 20, 3, BMSPA_font, ":", true);
+                        sprintf(timeBuf, "%02d", timeL.min);
+                        ssd1306_draw_string_with_font(&disp, 55, 20, 3, BMSPA_font, timeBuf, true);
+                    }
+                    break;
+                }
+                }
+
+                ssd1306_show(&disp);
+                xSemaphoreGive(dispMut);
+            }
+        }
         vTaskDelay(10);
     }
 
@@ -598,6 +664,10 @@ static void main_task(__unused void *params)
         ssd1306_show(&disp);
     }
 
+    sntp_init();
+    while (!rtcClockSet)
+        vTaskDelay(10);
+
     TaskHandle_t tcpTask;
     debugLog("[MAIN] Starting TCP client task", "Starting client.");
     xTaskCreate(tcp_task, "TCPThread", configMINIMAL_STACK_SIZE, NULL, (tskIDLE_PRIORITY + 2UL), &tcpTask);
@@ -698,6 +768,18 @@ int main()
 
     stdio_init_all();
     debug_trace_init();
+
+    rtc_init();
+    datetime_t time = {
+        .year = 2023,
+        .month = 02,
+        .day = 27,
+        .dotw = 1,
+        .hour = 12,
+        .min = 00,
+        .sec = 00};
+    rtc_set_datetime(&time);
+    sleep_us(64);
 
     vInitScreen();
     initTaskTimer(&timer);

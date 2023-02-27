@@ -10,6 +10,8 @@ set(CMAKE_CXX_STANDARD 17)
 
 set(PICO_BOARD pico_w)
 set(WIFI_HOSTNAME "PicoW IoT Device")
+set(CLOCK_TIMEZONE -18000)
+set(CLOCK_DAYLIGHT_SAVINGS 0)
 
 add_compile_definitions(PICO_PANIC_FUNCTION=rtos_panic_oled)
 add_compile_definitions(DEBUG_LEVEL=2)
@@ -32,7 +34,9 @@ configure_file( config.h.in ${CMAKE_BINARY_DIR}/generated/config.h )
 include_directories( ${CMAKE_BINARY_DIR}/generated/ ) 
 
 add_executable(picow_iot_device
-        main.c iot_tcpclient.c lib/ssd1306.c utils/debug.c lib/hashmap.c
+        main.c iot_tcpclient.c lib/ssd1306.c lib/hashmap.c
+        #utils
+        utils/debug.c
         #json lib
         lib/json/AllocatorIntf.c lib/json/BaAtoi.c lib/json/BufPrint.c lib/json/JDecoder.c lib/json/JEncoder.c lib/json/JParser.c
         )
@@ -45,8 +49,9 @@ target_link_libraries(picow_iot_device
         pico_cyw43_arch_lwip_sys_freertos
         pico_stdlib
         pico_lwip_iperf
+        pico_lwip_sntp
         FreeRTOS-Kernel-Heap4 # FreeRTOS kernel and dynamic heap
-        hardware_flash hardware_sync hardware_i2c
+        hardware_flash hardware_sync hardware_i2c hardware_rtc
         )
 
 if(MSVC)

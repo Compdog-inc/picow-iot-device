@@ -6,6 +6,8 @@
 #define LWIP_SOCKET 1
 #define MEM_LIBC_MALLOC 0
 
+#define MEMP_NUM_SYS_TIMEOUT 12
+
 #define TCPIP_THREAD_STACKSIZE 1024
 #define DEFAULT_THREAD_STACKSIZE 1024
 #define DEFAULT_RAW_RECVMBOX_SIZE 8
@@ -55,6 +57,16 @@
 #define LWIP_STATS_DISPLAY 1
 #endif
 
+#define SNTP_SERVER_DNS 1
+#define SNTP_CHECK_RESPONSE 2
+#define SNTP_COMP_ROUNDTRIP 1
+#define SNTP_SERVER_ADDRESS "time.google.com"
+
+#include <stdint.h>
+extern void setRTCTime(uint32_t sec);
+
+#define SNTP_SET_SYSTEM_TIME(sec) setRTCTime(sec)
+
 #define ETHARP_DEBUG LWIP_DBG_OFF
 #define NETIF_DEBUG LWIP_DBG_OFF
 #define PBUF_DEBUG LWIP_DBG_OFF
@@ -83,5 +95,6 @@
 #define PPP_DEBUG LWIP_DBG_OFF
 #define SLIP_DEBUG LWIP_DBG_OFF
 #define DHCP_DEBUG LWIP_DBG_OFF
+#define SNTP_DEBUG LWIP_DBG_OFF
 
 #endif
