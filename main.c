@@ -42,6 +42,17 @@ ssd1306_status_icon connectionIcon = {
     true                 // value
 };
 
+#include "icons/loading.h"
+ssd1306_status_icon_array loadingIcon = {
+    loading_bmps_data, // data
+    loading_bmps_size, // size
+    39,                // x_offset
+    12,                // y_offset
+    50,                // width
+    50,                // height
+    true               // value
+};
+
 #include "icons/panic_code.h"
 #pragma endregion
 
@@ -198,7 +209,7 @@ void rtos_panic_oled(const char *fmt, ...)
 
         ssd1306_draw_string(&disp, 2, disp.height - 8, 1, "Exit code: 1   DEBUG", false);
 
-        ssd1306_bmp_show_image_with_offset(&disp, panic_code_bmp_data, panic_code_bmp_size, disp.width - 37 - 2, 18, false);
+        ssd1306_bmp_show_image_with_offset(&disp, panic_code_bmp_data, panic_code_bmp_size, disp.width - 37 - 2, 18, ROTATE_NONE, false);
 
         ssd1306_show(&disp);
         sleep_ms(200);
@@ -468,11 +479,48 @@ static void ui_task(__unused void *params)
         }
     }
 
+    size_t loadingAnim = 0;
+    ssd1306_bmp_rotation_t loadingAnimRot = ROTATE_NONE;
+
+    while (!rtcClockSet)
+    {
+        vTaskDelay(5);
+
+        if (dispMut != NULL)
+        {
+            if (!xSemaphoreTake(dispMut, 100))
+                printf("[UI] WARNING! Unsafe display access\n");
+            else
+            {
+                ssd1306_draw_square(&disp, 0, 10, disp.width, disp.height - 10, false); // clear client area
+                ssd1306_draw_status_icon_array_overlay(&disp, loadingIcon, 45 - loadingAnim, loadingAnimRot);
+                ssd1306_show(&disp);
+                xSemaphoreGive(dispMut);
+            }
+        }
+
+        loadingAnim += 3;
+        if (loadingAnim > 45)
+        {
+            loadingAnim = 3;
+            if (loadingAnimRot == ROTATE_NONE)
+                loadingAnimRot = ROTATE_90;
+            else if (loadingAnimRot == ROTATE_90)
+                loadingAnimRot = ROTATE_180;
+            else if (loadingAnimRot == ROTATE_180)
+                loadingAnimRot = ROTATE_270;
+            else if (loadingAnimRot == ROTATE_270)
+                loadingAnimRot = ROTATE_NONE;
+        }
+    }
+
+    vTaskDelay(1);
+
     int page = -1;
     bool prevDown = false;
     datetime_t timeS;
-    char timeBuf[3];
-    absolute_time_t screenUpdateTime = make_timeout_time_ms(200);
+    char timeBuf[6];
+    absolute_time_t screenUpdateTime = get_absolute_time();
 
     while (client.running)
     {
@@ -488,11 +536,11 @@ static void ui_task(__unused void *params)
         prevDown = down;
         if (time_reached(screenUpdateTime) && dispMut != NULL)
         {
-            screenUpdateTime = make_timeout_time_ms(200);
             if (!xSemaphoreTake(dispMut, 100))
                 printf("[UI] WARNING! Unsafe display access\n");
             else
             {
+                screenUpdateTime = make_timeout_time_ms(200);
                 ssd1306_draw_square(&disp, 0, 10, disp.width, disp.height - 10, false); // clear client area
 
                 switch (page)
@@ -506,6 +554,7 @@ static void ui_task(__unused void *params)
                     }
 
                     struct tm timeT;
+                    timeT.tm_mday = timeS.day;
                     timeT.tm_isdst = 0;
                     timeT.tm_year = timeS.year - 1900;
                     timeT.tm_mon = timeS.month - 1;
@@ -530,26 +579,13 @@ static void ui_task(__unused void *params)
                     if (timeL.hour == 0)
                         timeL.hour = 12;
 
-                    // total width: 24+3+51+3+3 = 84 / 51+3+51+3+3 = 111
-                    // total height: 24
-                    // center X: 22 / 9
-                    // center Y: 20
-                    if (timeL.hour > 9)
-                    {
-                        sprintf(timeBuf, "%d", timeL.hour);
-                        ssd1306_draw_string_with_font(&disp, 9, 20, 3, BMSPA_font, timeBuf, true);
-                        ssd1306_draw_string_with_font(&disp, 63, 20, 3, BMSPA_font, ":", true);
-                        sprintf(timeBuf, "%02d", timeL.min);
-                        ssd1306_draw_string_with_font(&disp, 69, 20, 3, BMSPA_font, timeBuf, true);
-                    }
-                    else
-                    {
-                        sprintf(timeBuf, "%d", timeL.hour);
-                        ssd1306_draw_string_with_font(&disp, 22, 20, 3, BMSPA_font, timeBuf, true);
-                        ssd1306_draw_string_with_font(&disp, 49, 20, 3, BMSPA_font, ":", true);
-                        sprintf(timeBuf, "%02d", timeL.min);
-                        ssd1306_draw_string_with_font(&disp, 55, 20, 3, BMSPA_font, timeBuf, true);
-                    }
+                    sprintf(timeBuf, "%d:%02d", timeL.hour, timeL.min);
+
+                    ssd1306_string_measure timeSize = ssd1306_measure_string(BMSPA_font, timeBuf, 3);
+                    uint32_t offX = disp.width / 2 - timeSize.width / 2;
+                    uint32_t offY = disp.height / 2 - timeSize.height / 2;
+
+                    ssd1306_draw_string_with_font(&disp, offX, offY, 3, BMSPA_font, timeBuf, true);
                     break;
                 }
                 }
@@ -558,7 +594,7 @@ static void ui_task(__unused void *params)
                 xSemaphoreGive(dispMut);
             }
         }
-        vTaskDelay(10);
+        vTaskDelay(20);
     }
 
     vTaskDelete(NULL);
@@ -568,6 +604,7 @@ static void ui_task(__unused void *params)
 static void main_task(__unused void *params)
 {
     C_START("main_task");
+
     debugLog("[MAIN] Initializing cyw43_arch", "Init cyw43");
     if (cyw43_arch_init())
     {
@@ -665,8 +702,6 @@ static void main_task(__unused void *params)
     }
 
     sntp_init();
-    while (!rtcClockSet)
-        vTaskDelay(10);
 
     TaskHandle_t tcpTask;
     debugLog("[MAIN] Starting TCP client task", "Starting client.");

@@ -255,17 +255,47 @@ void ssd13606_draw_empty_square(ssd1306_t *p, uint32_t x, uint32_t y, uint32_t w
     F_END("ssd13606_draw_empty_square");
 }
 
+ssd1306_char_measure ssd1306_measure_char(const uint8_t *font, char c)
+{
+    uint8_t charHeight = font[1];
+    uint32_t parts_per_line = (font[1] >> 3) + ((font[1] & 7) > 0);
+    bool monospace = !font[0];
+
+    uint32_t charStart;
+    if (monospace)
+        charStart = (c - font[4]) * font[2] * parts_per_line + 6;
+    else
+        charStart = (c - font[4]) * (font[2] + 1) * parts_per_line + 7; // extra offset because of width byte
+
+    uint8_t charWidth;
+    if (monospace)
+        charWidth = font[2];
+    else
+        charWidth = font[charStart - 1]; /* width is before the char data */
+
+    ssd1306_char_measure measure = {
+        .monospace = monospace,
+        .parts_per_line = parts_per_line,
+        .char_start = charStart,
+        .char_width = charWidth,
+        .char_height = charHeight};
+
+    return measure;
+}
+
 void ssd1306_draw_char_with_font(ssd1306_t *p, uint32_t x, uint32_t y, uint32_t scale, const uint8_t *font, char c, bool value)
 {
     F_START("ssd1306_draw_char_with_font");
-    if (c < font[3] || c > font[4])
+    if (c < font[4] || c > font[5])
         F_RETURN("ssd1306_draw_char_with_font");
 
-    uint32_t parts_per_line = (font[0] >> 3) + ((font[0] & 7) > 0);
-    for (uint8_t w = 0; w < font[1]; ++w)
+    ssd1306_char_measure measure = ssd1306_measure_char(font, c);
+
+    for (uint8_t w = 0; w < measure.char_width; ++w)
     { // width
-        uint32_t pp = (c - font[3]) * font[1] * parts_per_line + w * parts_per_line + 5;
-        for (uint32_t lp = 0; lp < parts_per_line; ++lp)
+        uint32_t pp = measure.char_start + w * measure.parts_per_line;
+
+        for (uint32_t lp = 0; lp < measure.parts_per_line; ++lp)
         {
             uint8_t line = font[pp];
 
@@ -282,12 +312,35 @@ void ssd1306_draw_char_with_font(ssd1306_t *p, uint32_t x, uint32_t y, uint32_t 
     F_END("ssd1306_draw_char_with_font");
 }
 
+ssd1306_string_measure ssd1306_measure_string(const uint8_t *font, const char *s, uint32_t scale)
+{
+    bool monospace = false;
+    uint32_t width = 0;
+    uint32_t height = 0;
+    while (*s)
+    {
+        ssd1306_char_measure measure = ssd1306_measure_char(font, *(s++));
+        width += (measure.char_width + font[3]) * scale; // char width + constant spacing
+        height = measure.char_height * scale;            // scale to render size
+        monospace = measure.monospace;
+    }
+
+    ssd1306_string_measure m = {
+        .monospace = monospace,
+        .width = width,
+        .height = height};
+    return m;
+}
+
 void ssd1306_draw_string_with_font(ssd1306_t *p, uint32_t x, uint32_t y, uint32_t scale, const uint8_t *font, const char *s, bool value)
 {
     F_START("ssd1306_draw_string_with_font");
-    for (int32_t x_n = x; *s; x_n += (font[1] + font[2]) * scale)
+    int32_t x_n = x;
+    while (*s)
     {
+        ssd1306_char_measure measure = ssd1306_measure_char(font, *s);
         ssd1306_draw_char_with_font(p, x_n, y, scale, font, *(s++), value);
+        x_n += (measure.char_width + font[3]) * scale; // char width + constant spacing
     }
     F_END("ssd1306_draw_string_with_font");
 }
@@ -327,7 +380,7 @@ static inline uint32_t ssd1306_bmp_get_val(const uint8_t *data, const size_t off
     F_END("ssd1306_bmp_get_val");
 }
 
-void ssd1306_bmp_show_image_with_offset(ssd1306_t *p, const uint8_t *data, const long size, uint32_t x_offset, uint32_t y_offset, bool value)
+void ssd1306_bmp_show_image_with_offset(ssd1306_t *p, const uint8_t *data, const long size, uint32_t x_offset, uint32_t y_offset, ssd1306_bmp_rotation_t rotation, bool value)
 {
     F_START("ssd1306_bmp_show_image_with_offset");
     if (size < 54) // data smaller than header
@@ -372,9 +425,29 @@ void ssd1306_bmp_show_image_with_offset(ssd1306_t *p, const uint8_t *data, const
         {
             if (((img_data[x >> 3] >> (7 - (x & 7))) & 1) == color_val)
             {
-                ssd1306_reset_pixel(p, x_offset + x, y_offset + y);
-                if (value)
-                    ssd1306_draw_pixel(p, x_offset + x, y_offset + y);
+                switch (rotation)
+                {
+                case ROTATE_NONE:
+                    ssd1306_reset_pixel(p, x_offset + x, y_offset + y);
+                    if (value)
+                        ssd1306_draw_pixel(p, x_offset + x, y_offset + y);
+                    break;
+                case ROTATE_90:
+                    ssd1306_reset_pixel(p, x_offset + (biHeight - y), y_offset + x);
+                    if (value)
+                        ssd1306_draw_pixel(p, x_offset + (biHeight - y), y_offset + x);
+                    break;
+                case ROTATE_180:
+                    ssd1306_reset_pixel(p, x_offset + (biWidth - x), y_offset + (biHeight - y));
+                    if (value)
+                        ssd1306_draw_pixel(p, x_offset + (biWidth - x), y_offset + (biHeight - y));
+                    break;
+                case ROTATE_270:
+                    ssd1306_reset_pixel(p, x_offset + y, y_offset + (biWidth - x));
+                    if (value)
+                        ssd1306_draw_pixel(p, x_offset + y, y_offset + (biWidth - x));
+                    break;
+                }
             }
         }
         img_data += bytes_per_line;
@@ -386,7 +459,7 @@ void ssd1306_bmp_show_image_with_offset(ssd1306_t *p, const uint8_t *data, const
 inline void ssd1306_bmp_show_image(ssd1306_t *p, const uint8_t *data, const long size, bool value)
 {
     F_START("ssd1306_bmp_show_image");
-    ssd1306_bmp_show_image_with_offset(p, data, size, 0, 0, value);
+    ssd1306_bmp_show_image_with_offset(p, data, size, 0, 0, ROTATE_NONE, value);
     F_END("ssd1306_bmp_show_image");
 }
 
@@ -423,7 +496,7 @@ void ssd1306_draw_status_icon(ssd1306_t *p, ssd1306_status_icon icon)
 void ssd1306_draw_status_icon_overlay(ssd1306_t *p, ssd1306_status_icon icon)
 {
     F_START("ssd1306_draw_status_icon_overlay");
-    ssd1306_bmp_show_image_with_offset(p, icon.data, icon.size, icon.x_offset, icon.y_offset, icon.value);
+    ssd1306_bmp_show_image_with_offset(p, icon.data, icon.size, icon.x_offset, icon.y_offset, ROTATE_NONE, icon.value);
     F_END("ssd1306_draw_status_icon_overlay");
 }
 
@@ -447,14 +520,14 @@ void ssd1306_draw_status_icon_array(ssd1306_t *p, ssd1306_status_icon_array icon
 {
     F_START("ssd1306_draw_status_icon_array");
     ssd1306_clear_status_icon_array_area(p, icons, 0, 0, 0, 0);
-    ssd1306_draw_status_icon_array_overlay(p, icons, index);
+    ssd1306_draw_status_icon_array_overlay(p, icons, index, ROTATE_NONE);
     F_END("ssd1306_draw_status_icon_array");
 }
 
-void ssd1306_draw_status_icon_array_overlay(ssd1306_t *p, ssd1306_status_icon_array icons, size_t index)
+void ssd1306_draw_status_icon_array_overlay(ssd1306_t *p, ssd1306_status_icon_array icons, size_t index, ssd1306_bmp_rotation_t rotation)
 {
     F_START("ssd1306_draw_status_icon_array_overlay");
-    ssd1306_bmp_show_image_with_offset(p, icons.data[index], icons.size[index], icons.x_offset, icons.y_offset, icons.value);
+    ssd1306_bmp_show_image_with_offset(p, icons.data[index], icons.size[index], icons.x_offset, icons.y_offset, rotation, icons.value);
     F_END("ssd1306_draw_status_icon_array_overlay");
 }
 
@@ -469,7 +542,7 @@ void ssd1306_draw_status_icon_array_with_badge(ssd1306_t *p, ssd1306_status_icon
 void ssd1306_draw_status_icon_array_with_badge_overlay(ssd1306_t *p, ssd1306_status_icon_array icons, size_t index, const char *s)
 {
     F_START("ssd1306_draw_status_icon_array_with_badge_overlay");
-    ssd1306_draw_status_icon_array_overlay(p, icons, index);
+    ssd1306_draw_status_icon_array_overlay(p, icons, index, ROTATE_NONE);
     ssd1306_draw_badge_5x5(p, icons.x_offset + icons.width - 4, icons.y_offset + icons.height - 4, s, icons.value);
     F_END("ssd1306_draw_status_icon_array_with_badge_overlay");
 }

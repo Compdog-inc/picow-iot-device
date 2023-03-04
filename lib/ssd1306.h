@@ -57,6 +57,19 @@ typedef enum
 	SET_CHARGE_PUMP = 0x8D
 } ssd1306_command_t;
 
+typedef enum
+{
+	ROTATE_NONE = 0,
+
+	ROTATE_90 = 90,
+	ROTATE_180 = 180,
+	ROTATE_270 = 270,
+
+	ROTATE_NEG90 = ROTATE_270,
+	ROTATE_NEG180 = ROTATE_180,
+	ROTATE_NEG270 = ROTATE_90
+} ssd1306_bmp_rotation_t;
+
 /**
  *	@brief holds the configuration
  */
@@ -99,6 +112,24 @@ typedef struct
 	uint32_t height;	  /** height */
 	bool value;
 } ssd1306_status_icon_array;
+
+typedef struct
+{
+	bool monospace;			 /** is the font monospaced */
+	uint32_t parts_per_line; /** number of bytes per line */
+	uint32_t char_start;	 /** absolute offset of actual char data in the font */
+	uint8_t char_width;		 /** width of char in pixels (variable in non-monospaced fonts) */
+	uint8_t char_height;	 /** height of char in pixels (constant) */
+
+} ssd1306_char_measure;
+
+typedef struct
+{
+	bool monospace;	 /** is the font monospaced */
+	uint32_t width;	 /** string width in pixels (scaled) */
+	uint32_t height; /** string height in pixels (scaled) */
+
+} ssd1306_string_measure;
 
 /**
  *	@brief initialize display
@@ -240,8 +271,9 @@ void ssd13606_draw_empty_square(ssd1306_t *p, uint32_t x, uint32_t y, uint32_t w
 	@param[in] size : size of image data in bytes
 	@param[in] x_offset : offset of horizontal coordinate
 	@param[in] y_offset : offset of vertical coordinate
+	@param[in] rotation : fixed rotation
 */
-void ssd1306_bmp_show_image_with_offset(ssd1306_t *p, const uint8_t *data, const long size, uint32_t x_offset, uint32_t y_offset, bool value);
+void ssd1306_bmp_show_image_with_offset(ssd1306_t *p, const uint8_t *data, const long size, uint32_t x_offset, uint32_t y_offset, ssd1306_bmp_rotation_t rotation, bool value);
 
 /**
 	@brief draw monochrome bitmap
@@ -337,7 +369,7 @@ void ssd1306_draw_status_icon_array(ssd1306_t *p, ssd1306_status_icon_array icon
 	@param[in] icons : array of icon data
 	@param[in] index : index of icon to draw
 */
-void ssd1306_draw_status_icon_array_overlay(ssd1306_t *p, ssd1306_status_icon_array icons, size_t index);
+void ssd1306_draw_status_icon_array_overlay(ssd1306_t *p, ssd1306_status_icon_array icons, size_t index, ssd1306_bmp_rotation_t rotation);
 
 /**
 	@brief draw array of static status icons with badge
@@ -370,6 +402,9 @@ void ssd1306_draw_status_icon_array_with_badge_overlay(ssd1306_t *p, ssd1306_sta
 	@param[in] c : character to draw
 */
 void ssd1306_draw_char_with_font(ssd1306_t *p, uint32_t x, uint32_t y, uint32_t scale, const uint8_t *font, char c, bool value);
+
+ssd1306_char_measure ssd1306_measure_char(const uint8_t *font, char c);
+ssd1306_string_measure ssd1306_measure_string(const uint8_t *font, const char *s, uint32_t scale);
 
 /**
 	@brief draw char with builtin font
