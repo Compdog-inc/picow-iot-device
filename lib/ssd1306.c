@@ -320,8 +320,12 @@ ssd1306_string_measure ssd1306_measure_string(const uint8_t *font, const char *s
     while (*s)
     {
         ssd1306_char_measure measure = ssd1306_measure_char(font, *(s++));
-        width += (measure.char_width + font[3]) * scale; // char width + constant spacing
-        height = measure.char_height * scale;            // scale to render size
+        if (*s)
+            width += (measure.char_width + font[3]) * scale; // char width + constant spacing
+        else
+            width += measure.char_width * scale; // just char width
+
+        height = measure.char_height * scale; // scale to render size
         monospace = measure.monospace;
     }
 

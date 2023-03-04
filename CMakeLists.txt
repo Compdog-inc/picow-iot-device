@@ -13,6 +13,8 @@ set(WIFI_HOSTNAME "PicoW IoT Device")
 set(CLOCK_TIMEZONE -18000)
 set(CLOCK_DAYLIGHT_SAVINGS 0)
 
+set(TEMPERATURE_UNITS "C")
+
 add_compile_definitions(PICO_PANIC_FUNCTION=rtos_panic_oled)
 add_compile_definitions(DEBUG_LEVEL=2)
 add_compile_definitions(NO_JVAL_DEPENDENCY)
@@ -51,7 +53,7 @@ target_link_libraries(picow_iot_device
         pico_lwip_iperf
         pico_lwip_sntp
         FreeRTOS-Kernel-Heap4 # FreeRTOS kernel and dynamic heap
-        hardware_flash hardware_sync hardware_i2c hardware_rtc
+        hardware_flash hardware_sync hardware_i2c hardware_rtc hardware_adc
         )
 
 if(MSVC)

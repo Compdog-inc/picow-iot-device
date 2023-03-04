@@ -16,6 +16,7 @@
 #include <hardware/clocks.h>
 #include <hardware/watchdog.h>
 #include <hardware/rtc.h>
+#include <hardware/adc.h>
 
 #include <lwip/netif.h>
 #include <lwip/ip4_addr.h>

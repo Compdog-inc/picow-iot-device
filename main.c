@@ -463,6 +463,37 @@ static void tcp_task(__unused void *params)
     C_END("tcp_task");
 }
 
+typedef enum
+{
+    TempC = 0,
+    TempF = 1
+} TemperatureUnit;
+
+#define TEMP_UNIT(u) ((u) == 'C' ? TempC : (u) == 'F' ? TempF \
+                                                      : -1)
+#define STR_TEMP_UNIT(u) ((u) == TempC ? "C" : (u) == TempF ? "F" \
+                                                            : "-")
+
+float read_onboard_temperature(const char unit)
+{
+    /* 12-bit conversion, assume max value == ADC_VREF == 3.3 V */
+    const float conversionFactor = 3.3f / (1 << 12);
+
+    float adc = (float)adc_read() * conversionFactor;
+    float tempC = 27.0f - (adc - 0.706f) / 0.001721f;
+
+    if (unit == 'C')
+    {
+        return tempC;
+    }
+    else if (unit == 'F')
+    {
+        return tempC * 9 / 5 + 32;
+    }
+
+    return -1.0f;
+}
+
 static void ui_task(__unused void *params)
 {
     C_START("ui_task");
@@ -520,7 +551,9 @@ static void ui_task(__unused void *params)
     bool prevDown = false;
     datetime_t timeS;
     char timeBuf[6];
+    float onboardTemp = 0;
     absolute_time_t screenUpdateTime = get_absolute_time();
+    absolute_time_t tempUpdateTime = get_absolute_time();
 
     while (client.running)
     {
@@ -586,6 +619,31 @@ static void ui_task(__unused void *params)
                     uint32_t offY = disp.height / 2 - timeSize.height / 2;
 
                     ssd1306_draw_string_with_font(&disp, offX, offY, 3, BMSPA_font, timeBuf, true);
+                    break;
+                }
+                case SCREEN_PAGE_TEMP:
+                {
+                    if (time_reached(tempUpdateTime))
+                    {
+                        tempUpdateTime = make_timeout_time_ms(1000);
+                        adc_select_input(4); // select temp sensor
+                        onboardTemp = read_onboard_temperature(TEMPERATURE_UNITS);
+                    }
+
+                    sprintf(timeBuf, "%d", (int)roundf(onboardTemp));
+
+                    ssd1306_string_measure strSize = ssd1306_measure_string(BMSPA_font, timeBuf, 3);
+                    ssd1306_string_measure degSize = ssd1306_measure_string(BMSPA_font, "o", 1);
+                    ssd1306_string_measure unitSize = ssd1306_measure_string(BMSPA_font, STR_TEMP_UNIT(TEMP_UNIT(TEMPERATURE_UNITS)), 2);
+                    uint32_t totalWidth = strSize.width + 2 * 3 + degSize.width + 2 * 1 + unitSize.width;
+                    uint32_t offX = disp.width / 2 - totalWidth / 2;
+                    uint32_t offY = disp.height / 2 - strSize.height / 2;
+                    uint32_t degX = offX + strSize.width + 2 * 3;
+                    uint32_t unitX = degX + degSize.width + 2 * 1;
+
+                    ssd1306_draw_string_with_font(&disp, offX, offY, 3, BMSPA_font, timeBuf, true);
+                    ssd1306_draw_string_with_font(&disp, degX, offY, 1, BMSPA_font, "o", true);
+                    ssd1306_draw_string_with_font(&disp, unitX, offY, 2, BMSPA_font, STR_TEMP_UNIT(TEMP_UNIT(TEMPERATURE_UNITS)), true);
                     break;
                 }
                 }
@@ -815,6 +873,9 @@ int main()
         .sec = 00};
     rtc_set_datetime(&time);
     sleep_us(64);
+
+    adc_init();
+    adc_set_temp_sensor_enabled(true);
 
     vInitScreen();
     initTaskTimer(&timer);
