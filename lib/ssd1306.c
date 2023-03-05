@@ -340,11 +340,18 @@ void ssd1306_draw_string_with_font(ssd1306_t *p, uint32_t x, uint32_t y, uint32_
 {
     F_START("ssd1306_draw_string_with_font");
     int32_t x_n = x;
+    int32_t y_n = y;
     while (*s)
     {
         ssd1306_char_measure measure = ssd1306_measure_char(font, *s);
-        ssd1306_draw_char_with_font(p, x_n, y, scale, font, *(s++), value);
+        ssd1306_draw_char_with_font(p, x_n, y_n, scale, font, *s, value);
         x_n += (measure.char_width + font[3]) * scale; // char width + constant spacing
+        if (*s == '\n')                                // supports multiline text
+        {
+            x_n = x;
+            y_n += (measure.char_height + 1) * scale;
+        }
+        s++;
     }
     F_END("ssd1306_draw_string_with_font");
 }
