@@ -36,7 +36,7 @@ configure_file( config.h.in ${CMAKE_BINARY_DIR}/generated/config.h )
 include_directories( ${CMAKE_BINARY_DIR}/generated/ ) 
 
 add_executable(picow_iot_device
-        main.c iot_tcpclient.c lib/ssd1306.c lib/hashmap.c
+        main.c iot_tcpclient.c lib/ssd1306.c lib/hashmap.c lib/rotencoder.c lib/pointerlist.c
         #utils
         utils/debug.c
         #json lib

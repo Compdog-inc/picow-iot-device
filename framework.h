@@ -32,11 +32,14 @@
 
 #include "lib/ssd1306.h"
 #include "lib/hashmap.h"
+#include "lib/pointerlist.h"
+#include "lib/rotencoder.h"
 
 #include "lib/json/JParser.h"
 #include "lib/json/JDecoder.h"
 #include "lib/json/JEncoder.h"
 
 #define min(a, b) ((a) < (b) ? (a) : (b))
+#define wrap(num, min, max) ((((((num) - (min)) % ((max) - (min))) + ((max) - (min))) % ((max) - (min))) + (min))
 
 #endif
