@@ -67,7 +67,9 @@
 			"utility": "c",
 			"bmspa_font.h": "c",
 			"chrono": "c",
-			"test.h": "c"
+			"test.h": "c",
+			"limits": "c",
+			"semaphore": "c"
 		},
 		"cmake.statusbar.advanced": {
 			"debug": {
