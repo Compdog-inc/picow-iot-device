@@ -315,19 +315,32 @@ void ssd1306_draw_char_with_font(ssd1306_t *p, uint32_t x, uint32_t y, uint32_t 
 ssd1306_string_measure ssd1306_measure_string(const uint8_t *font, const char *s, uint32_t scale)
 {
     bool monospace = false;
+    uint32_t tempWidth = 0;
+    uint32_t tempHeight = 0;
     uint32_t width = 0;
     uint32_t height = 0;
     while (*s)
     {
-        ssd1306_char_measure measure = ssd1306_measure_char(font, *(s++));
+        ssd1306_char_measure measure = ssd1306_measure_char(font, *s);
+        if (*s == '\n') // supports multiline text
+        {
+            width = MAX(width, tempWidth);
+            height += tempHeight + 1 * scale;
+            tempHeight = 0;
+            tempWidth = 0;
+        }
+        s++;
         if (*s)
-            width += (measure.char_width + font[3]) * scale; // char width + constant spacing
+            tempWidth += (measure.char_width + font[3]) * scale; // char width + constant spacing
         else
-            width += measure.char_width * scale; // just char width
+            tempWidth += measure.char_width * scale; // just char width
 
-        height = measure.char_height * scale; // scale to render size
+        tempHeight = MAX(tempHeight, measure.char_height * scale); // scale to render size
         monospace = measure.monospace;
     }
+
+    width = MAX(width, tempWidth);
+    height += tempHeight;
 
     ssd1306_string_measure m = {
         .monospace = monospace,
