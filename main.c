@@ -507,6 +507,12 @@ int64_t dim_alarm_callback(alarm_id_t id, void *user_data)
     return 0;
 }
 
+int64_t turnoff_alarm_callback(alarm_id_t id, void *user_data)
+{
+    ssd1306_poweroff(&disp);
+    return 0;
+}
+
 static void ui_task(void *params)
 {
     C_START("ui_task");
@@ -570,7 +576,8 @@ static void ui_task(void *params)
     absolute_time_t screenUpdateTime = get_absolute_time();
     absolute_time_t tempUpdateTime = get_absolute_time();
     absolute_time_t page_auto_switch = make_timeout_time_ms(30 * 1000);
-    alarm_id_t dimAlarm = add_alarm_in_ms(2 * 60 * 1000, dim_alarm_callback, NULL, true); // dim screen after 2 mins
+    alarm_id_t dimAlarm = add_alarm_in_ms(2 * 60 * 1000, dim_alarm_callback, NULL, true);         // dim screen after 2 mins
+    alarm_id_t turnOffAlarm = add_alarm_in_ms(5 * 60 * 1000, turnoff_alarm_callback, NULL, true); // turn off screen after 5 mins
     absolute_time_t lastMotionTime = get_absolute_time();
 
     while (client.running)
@@ -583,6 +590,20 @@ static void ui_task(void *params)
         if (ACTION_BTN_DOWN || actionRot.rel_val != 0 || gpio_get(MOTION_SENSOR))
         {
             // turn on display after interaction
+            if (!cancel_alarm(turnOffAlarm))
+            {
+                if (dispMut != NULL)
+                {
+                    if (!xSemaphoreTake(dispMut, 100))
+                        printf("[UI_INTR] WARNING! Unsafe display access\n");
+                    else
+                    {
+                        ssd1306_poweron(&disp);
+                        xSemaphoreGive(dispMut);
+                    }
+                }
+            }
+
             if (!cancel_alarm(dimAlarm))
             {
                 if (dispMut != NULL)
@@ -597,6 +618,7 @@ static void ui_task(void *params)
                 }
             }
             dimAlarm = add_alarm_in_ms(2 * 60 * 1000, dim_alarm_callback, NULL, true);
+            turnOffAlarm = add_alarm_in_ms(5 * 60 * 1000, turnoff_alarm_callback, NULL, true);
         }
 
         if (page == -1 || (actionRot.rel_val != 0) || time_reached(page_auto_switch))
