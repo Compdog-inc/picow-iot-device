@@ -69,7 +69,8 @@
 			"chrono": "c",
 			"test.h": "c",
 			"limits": "c",
-			"semaphore": "c"
+			"semaphore": "c",
+			"rand.h": "c"
 		},
 		"cmake.statusbar.advanced": {
 			"debug": {

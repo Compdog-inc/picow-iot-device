@@ -3,6 +3,7 @@
 #include "utils/getline.h"
 #include "utils/non_volatile_mem.h"
 #include "utils/debug.h"
+#include "utils/random.h"
 #include "lib/acme_5_outlines_font.h"
 #include "lib/BMSPA_font.h"
 #include "iot_tcpclient.h"
@@ -513,6 +514,16 @@ int64_t turnoff_alarm_callback(alarm_id_t id, void *user_data)
     return 0;
 }
 
+int displayOffsetX = 0;
+int displayOffsetY = 0;
+
+bool shift_timer_callback(repeating_timer_t *rt)
+{
+    displayOffsetX = get_rand_int(-2, 3);
+    displayOffsetY = get_rand_int(-2, 3);
+    return true; // keep repeating
+}
+
 static void ui_task(void *params)
 {
     C_START("ui_task");
@@ -579,6 +590,16 @@ static void ui_task(void *params)
     alarm_id_t dimAlarm = add_alarm_in_ms(2 * 60 * 1000, dim_alarm_callback, NULL, true);         // dim screen after 2 mins
     alarm_id_t turnOffAlarm = add_alarm_in_ms(5 * 60 * 1000, turnoff_alarm_callback, NULL, true); // turn off screen after 5 mins
     absolute_time_t lastMotionTime = get_absolute_time();
+
+    repeating_timer_t shiftTimer;
+    if (!add_repeating_timer_ms(-1000 * 60 * 10, shift_timer_callback, NULL, &shiftTimer))
+    {
+        debugLog("[INIT] Failed to create shift timer", "SHTimer: FAIL");
+    }
+    else
+    {
+        debugLog("[INIT] Created shift timer [%i] @%" PRId64, "SHTimer: OK", shiftTimer.alarm_id, shiftTimer.delay_us);
+    }
 
     while (client.running)
     {
@@ -647,9 +668,14 @@ static void ui_task(void *params)
                 printf("[UI] WARNING! Unsafe display access\n");
             else
             {
+                disp.offsetX = 0;
+                disp.offsetY = 0;
                 screenUpdateTime = make_timeout_time_ms(200);
                 ssd1306_draw_square(&disp, 0, 10, disp.width, disp.height - 10, false); // clear client area
                 ssd1306_draw_square(&disp, disp.width / 2 - 8, 0, 16, 10, false);       // clear top part of overlay img
+
+                disp.offsetX = displayOffsetX;
+                disp.offsetY = displayOffsetY;
 
                 switch (page)
                 {
@@ -806,6 +832,8 @@ static void ui_task(void *params)
                 }
 
                 ssd1306_show(&disp);
+                disp.offsetX = 0;
+                disp.offsetY = 0;
                 xSemaphoreGive(dispMut);
             }
         }

@@ -38,7 +38,7 @@ include_directories( ${CMAKE_BINARY_DIR}/generated/ )
 add_executable(picow_iot_device
         main.c iot_tcpclient.c lib/ssd1306.c lib/hashmap.c lib/rotencoder.c lib/pointerlist.c
         #utils
-        utils/debug.c
+        utils/debug.c utils/random.c
         #json lib
         lib/json/AllocatorIntf.c lib/json/BaAtoi.c lib/json/BufPrint.c lib/json/JDecoder.c lib/json/JEncoder.c lib/json/JParser.c
         )

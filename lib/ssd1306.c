@@ -76,6 +76,8 @@ bool ssd1306_init(ssd1306_t *p, uint16_t width, uint16_t height, uint8_t address
     p->height = height;
     p->pages = height / 8;
     p->address = address;
+    p->offsetX = 0;
+    p->offsetY = 0;
 
     p->i2c_i = i2c_instance;
 
@@ -181,6 +183,8 @@ inline void ssd1306_fill(ssd1306_t *p)
 void ssd1306_draw_pixel(ssd1306_t *p, uint32_t x, uint32_t y)
 {
     F_START("ssd1306_draw_pixel");
+    x += p->offsetX;
+    y += p->offsetY;
     if (x >= p->width || y >= p->height)
         F_RETURN("ssd1306_draw_pixel");
 
@@ -191,6 +195,8 @@ void ssd1306_draw_pixel(ssd1306_t *p, uint32_t x, uint32_t y)
 void ssd1306_reset_pixel(ssd1306_t *p, uint32_t x, uint32_t y)
 {
     F_START("ssd1306_reset_pixel");
+    x += p->offsetX;
+    y += p->offsetY;
     if (x >= p->width || y >= p->height)
         F_RETURN("ssd1306_reset_pixel");
 
