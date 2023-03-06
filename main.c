@@ -6,6 +6,7 @@
 #include "lib/acme_5_outlines_font.h"
 #include "lib/BMSPA_font.h"
 #include "iot_tcpclient.h"
+#include "lib/fontd.h"
 
 #pragma region Icons
 
@@ -54,12 +55,16 @@ ssd1306_status_icon_array loadingIcon = {
 };
 
 #include "icons/panic_code.h"
+#include "icons/motion_detected.h"
 #pragma endregion
 
 #define ACTION_BTN 15
 #define ACTION_BTN_DOWN !gpio_get(ACTION_BTN)
+
 #define PANIC_BTN 16
 #define PANIC_BTN_DOWN !gpio_get(PANIC_BTN)
+
+#define MOTION_SENSOR 11
 
 typedef struct _settingsData
 {
@@ -71,6 +76,8 @@ typedef struct _settingsData
     uint8_t controlByteB;
     uint8_t controlByteD;
 } SettingsData;
+
+rotencoder_t actionRot;
 
 SemaphoreHandle_t dispMut; // I2C is not thread safe
 ssd1306_t disp;
@@ -494,9 +501,17 @@ float read_onboard_temperature(const char unit)
     return -1.0f;
 }
 
-static void ui_task(__unused void *params)
+int64_t dim_alarm_callback(alarm_id_t id, void *user_data)
+{
+    ssd1306_contrast(&disp, 1);
+    return 0;
+}
+
+static void ui_task(void *params)
 {
     C_START("ui_task");
+
+    SettingsData *settings = (SettingsData *)params;
 
     if (dispMut != NULL)
     {
@@ -548,25 +563,62 @@ static void ui_task(__unused void *params)
     vTaskDelay(1);
 
     int page = -1;
-    bool prevDown = false;
     datetime_t timeS;
-    char timeBuf[6];
+    char strBuf[128];
+    char strBufS[32];
     float onboardTemp = 0;
     absolute_time_t screenUpdateTime = get_absolute_time();
     absolute_time_t tempUpdateTime = get_absolute_time();
+    absolute_time_t page_auto_switch = make_timeout_time_ms(30 * 1000);
+    alarm_id_t dimAlarm = add_alarm_in_ms(2 * 60 * 1000, dim_alarm_callback, NULL, true); // dim screen after 2 mins
+    absolute_time_t lastMotionTime = get_absolute_time();
 
     while (client.running)
     {
-        bool down = ACTION_BTN_DOWN;
-        if (page == -1 || (down && !prevDown))
+        if (gpio_get(MOTION_SENSOR))
         {
-            if (++page > SCREEN_PAGE_ABOUT)
-                page = SCREEN_PAGE_TIME;
+            lastMotionTime = get_absolute_time();
+        }
 
+        if (ACTION_BTN_DOWN || actionRot.rel_val != 0 || gpio_get(MOTION_SENSOR))
+        {
+            // turn on display after interaction
+            if (!cancel_alarm(dimAlarm))
+            {
+                if (dispMut != NULL)
+                {
+                    if (!xSemaphoreTake(dispMut, 100))
+                        printf("[UI_INTR] WARNING! Unsafe display access\n");
+                    else
+                    {
+                        ssd1306_contrast(&disp, 0xff);
+                        xSemaphoreGive(dispMut);
+                    }
+                }
+            }
+            dimAlarm = add_alarm_in_ms(2 * 60 * 1000, dim_alarm_callback, NULL, true);
+        }
+
+        if (page == -1 || (actionRot.rel_val != 0) || time_reached(page_auto_switch))
+        {
+            if (page == -1)
+                page = SCREEN_PAGE_TIME;
+            else if (actionRot.rel_val != 0)
+            {
+                page = wrap(page + actionRot.rel_val, SCREEN_PAGE_TIME, SCREEN_PAGE_ABOUT + 1);
+            }
+            else if (time_reached(page_auto_switch))
+            {
+                if (++page > SCREEN_PAGE_MOTION)
+                    page = SCREEN_PAGE_TIME;
+            }
+
+            actionRot.rel_val = 0;
             printf("[UI] Switching to page: %s\n", SCREEN_PAGE_STR(page));
             screenUpdateTime = get_absolute_time();
+            page_auto_switch = make_timeout_time_ms(30 * 1000);
         }
-        prevDown = down;
+
         if (time_reached(screenUpdateTime) && dispMut != NULL)
         {
             if (!xSemaphoreTake(dispMut, 100))
@@ -575,6 +627,7 @@ static void ui_task(__unused void *params)
             {
                 screenUpdateTime = make_timeout_time_ms(200);
                 ssd1306_draw_square(&disp, 0, 10, disp.width, disp.height - 10, false); // clear client area
+                ssd1306_draw_square(&disp, disp.width / 2 - 8, 0, 16, 10, false);       // clear top part of overlay img
 
                 switch (page)
                 {
@@ -612,13 +665,13 @@ static void ui_task(__unused void *params)
                     if (timeL.hour == 0)
                         timeL.hour = 12;
 
-                    sprintf(timeBuf, "%d:%02d", timeL.hour, timeL.min);
+                    sprintf(strBuf, "%d:%02d", timeL.hour, timeL.min);
 
-                    ssd1306_string_measure timeSize = ssd1306_measure_string(BMSPA_font, timeBuf, 3);
+                    ssd1306_string_measure timeSize = ssd1306_measure_string(BMSPA_font, strBuf, 3);
                     uint32_t offX = disp.width / 2 - timeSize.width / 2;
                     uint32_t offY = disp.height / 2 - timeSize.height / 2;
 
-                    ssd1306_draw_string_with_font(&disp, offX, offY, 3, BMSPA_font, timeBuf, true);
+                    ssd1306_draw_string_with_font(&disp, offX, offY, 3, BMSPA_font, strBuf, true);
                     break;
                 }
                 case SCREEN_PAGE_TEMP:
@@ -630,9 +683,9 @@ static void ui_task(__unused void *params)
                         onboardTemp = read_onboard_temperature(TEMPERATURE_UNITS);
                     }
 
-                    sprintf(timeBuf, "%d", (int)roundf(onboardTemp));
+                    sprintf(strBuf, "%d", (int)roundf(onboardTemp));
 
-                    ssd1306_string_measure strSize = ssd1306_measure_string(BMSPA_font, timeBuf, 3);
+                    ssd1306_string_measure strSize = ssd1306_measure_string(BMSPA_font, strBuf, 3);
                     ssd1306_string_measure degSize = ssd1306_measure_string(BMSPA_font, "o", 1);
                     ssd1306_string_measure unitSize = ssd1306_measure_string(BMSPA_font, STR_TEMP_UNIT(TEMP_UNIT(TEMPERATURE_UNITS)), 2);
                     uint32_t totalWidth = strSize.width + 2 * 3 + degSize.width + 2 * 1 + unitSize.width;
@@ -641,9 +694,91 @@ static void ui_task(__unused void *params)
                     uint32_t degX = offX + strSize.width + 2 * 3;
                     uint32_t unitX = degX + degSize.width + 2 * 1;
 
-                    ssd1306_draw_string_with_font(&disp, offX, offY, 3, BMSPA_font, timeBuf, true);
+                    ssd1306_draw_string_with_font(&disp, offX, offY, 3, BMSPA_font, strBuf, true);
                     ssd1306_draw_string_with_font(&disp, degX, offY, 1, BMSPA_font, "o", true);
                     ssd1306_draw_string_with_font(&disp, unitX, offY, 2, BMSPA_font, STR_TEMP_UNIT(TEMP_UNIT(TEMPERATURE_UNITS)), true);
+                    break;
+                }
+                case SCREEN_PAGE_MOTION:
+                {
+                    bool motion = gpio_get(MOTION_SENSOR);
+                    if (motion)
+                    {
+                        ssd1306_bmp_show_image_with_offset(&disp, motion_detected_bmp_data, motion_detected_bmp_size, 0, 0, ROTATE_NONE, true);
+                    }
+                    else
+                    {
+                        int64_t timeSinceLastMotion = absolute_time_diff_us(lastMotionTime, get_absolute_time());
+                        int64_t milliseconds = timeSinceLastMotion / 1000;
+
+                        int64_t seconds = milliseconds / 1000;
+                        milliseconds %= 1000;
+
+                        int64_t minutes = seconds / 60;
+                        seconds %= 60;
+
+                        int64_t hours = minutes / 60;
+                        minutes %= 60;
+
+                        ssd1306_draw_string_with_font(&disp, 0, 10, 1, fontd_8x5, "No motion for:", true);
+
+                        if (hours == 0)
+                        {
+                            if (minutes == 0)
+                            {
+                                // draw big seconds
+                                sprintf(strBuf, "%lld", seconds);
+
+                                ssd1306_string_measure numSize = ssd1306_measure_string(fontd_8x5, strBuf, 3);
+                                ssd1306_string_measure unitSize = ssd1306_measure_string(fontd_8x5, "sec.", 2);
+
+                                uint32_t offX = disp.width / 2 - (numSize.width + 3 + unitSize.width) / 2;
+                                uint32_t offY = disp.height / 2 - numSize.height / 2;
+                                uint32_t unitOffX = offX + numSize.width + 3;
+
+                                ssd1306_draw_string_with_font(&disp, offX, offY, 3, fontd_8x5, strBuf, true);
+                                ssd1306_draw_string_with_font(&disp, unitOffX, offY + (numSize.height - unitSize.height), 2, fontd_8x5, "sec.", true);
+                            }
+                            else
+                            {
+                                // draw big minutes + small seconds
+                                sprintf(strBuf, "%lld", minutes);
+                                sprintf(strBufS, ":%02lld", seconds);
+
+                                ssd1306_string_measure numSize = ssd1306_measure_string(fontd_8x5, strBuf, 3);
+                                ssd1306_string_measure subSize = ssd1306_measure_string(fontd_8x5, strBufS, 2);
+
+                                uint32_t offX = disp.width / 2 - (numSize.width + 3 + subSize.width) / 2;
+                                uint32_t offY = disp.height / 2 - numSize.height / 2;
+                                uint32_t subOffX = offX + numSize.width + 3;
+
+                                ssd1306_draw_string_with_font(&disp, offX, offY, 3, fontd_8x5, strBuf, true);
+                                ssd1306_draw_string_with_font(&disp, subOffX, offY + (numSize.height - subSize.height), 2, fontd_8x5, strBufS, true);
+                            }
+                        }
+                        else
+                        {
+                            // draw big hours + small minutes:seconds
+                            sprintf(strBuf, "%lld", hours);
+                            sprintf(strBufS, ":%02lld:%02lld", minutes, seconds);
+
+                            ssd1306_string_measure numSize = ssd1306_measure_string(fontd_8x5, strBuf, 3);
+                            ssd1306_string_measure subSize = ssd1306_measure_string(fontd_8x5, strBufS, 2);
+
+                            uint32_t offX = disp.width / 2 - (numSize.width + 3 + subSize.width) / 2;
+                            uint32_t offY = disp.height / 2 - numSize.height / 2;
+                            uint32_t subOffX = offX + numSize.width + 3;
+
+                            ssd1306_draw_string_with_font(&disp, offX, offY, 3, fontd_8x5, strBuf, true);
+                            ssd1306_draw_string_with_font(&disp, subOffX, offY + (numSize.height - subSize.height), 2, fontd_8x5, strBufS, true);
+                        }
+                    }
+                    break;
+                }
+                case SCREEN_PAGE_ABOUT:
+                {
+                    sprintf(strBuf, "picow-iot-device\nCompdog Inc.(c) 2023\nv0.4.1 %s\n%s\n%s", PICO_CMAKE_BUILD_TYPE, WIFI_HOSTNAME, settings->wifiSSID);
+                    ssd1306_draw_string(&disp, 0, 10, 1, strBuf, true);
                     break;
                 }
                 }
@@ -685,6 +820,9 @@ static void main_task(__unused void *params)
     gpio_init(PANIC_BTN);
     gpio_set_dir(PANIC_BTN, GPIO_IN);
     gpio_pull_up(PANIC_BTN);
+
+    gpio_init(MOTION_SENSOR);
+    gpio_set_dir(MOTION_SENSOR, GPIO_IN);
 
     SettingsData *settings = (SettingsData *)nvmem_read(0);
     debugLog("[CFG] Read settings from nvmem (nvmem_read)", "Settings loaded");
@@ -772,7 +910,7 @@ static void main_task(__unused void *params)
 
     TaskHandle_t uiTask;
     debugLog("[MAIN] Starting UI task", "Starting UI.");
-    xTaskCreate(ui_task, "UIThread", configMINIMAL_STACK_SIZE, NULL, (tskIDLE_PRIORITY + 2UL), &uiTask);
+    xTaskCreate(ui_task, "UIThread", configMINIMAL_STACK_SIZE, settings, (tskIDLE_PRIORITY + 2UL), &uiTask);
 
     absolute_time_t nextSendTime = make_timeout_time_ms(1000);
     while (client.running)
@@ -881,6 +1019,9 @@ int main()
     initTaskTimer(&timer);
     initTraceTimer(&traceTimer);
 
+    rotencoder_register_callback(); // enable internal gpio callback
+    rotencoder_init(&actionRot, 12, 13);
+
     if (watchdog_caused_reboot())
     {
         SettingsData *settings = (SettingsData *)nvmem_read(0);
@@ -905,6 +1046,9 @@ int main()
 
     debugLog("[BOOT] Starting task scheduler", "Start tasksch");
     vTaskStartScheduler();
+
+    rotencoder_deinit(&actionRot);
+    rotencoder_deinit_callback();
 
     cancel_repeating_timer(&timer);
     cancel_repeating_timer(&traceTimer);
