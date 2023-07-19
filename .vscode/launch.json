@@ -3,7 +3,7 @@
     "configurations": [
         {
             "name": "Pico Debug",
-            "cwd": "C:/msys64/home/Vladimir/openocd/src",
+            "cwd": "C:/Users/Vladimir/Documents/GitHub/openocd",
             "executable": "${command:cmake.launchTargetPath}",
             "request": "launch",
             "type": "cortex-debug",
@@ -16,14 +16,17 @@
             ],
             "svdFile": "${env:PICO_SDK_PATH}/src/rp2040/hardware_regs/rp2040.svd",
             "runToEntryPoint": "main",
+            "liveWatch": {
+                "enabled": true,
+                "samplesPerSecond": 4
+            },
             "postRestartCommands": [
                 "break main",
                 "continue"
             ],
             "searchDir": [
-                "C:/msys64/home/Vladimir/openocd/tcl"
-            ],
-            "preLaunchTask": "nrfTermClear",
+                "C:/Users/Vladimir/Documents/GitHub/openocd/tcl"
+            ]
         }
     ]
 }

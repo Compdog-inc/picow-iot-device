@@ -1,4 +1,20 @@
 {
+    "cmake.statusbar.advanced": {
+        "debug": {
+            "visibility": "hidden"
+        },
+        "launch": {
+            "visibility": "hidden"
+        },
+        "build": {
+            "visibility": "default"
+        },
+        "buildTarget": {
+            "visibility": "hidden"
+        }
+    },
+    "cortex-debug.openocdPath": "C:/Users/Vladimir/Documents/GitHub/openocd/openocd.exe",
     "cmake.buildBeforeRun": true,
-    "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools"
+    "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+    "cortex-debug.variableUseNaturalFormat": true
 }
